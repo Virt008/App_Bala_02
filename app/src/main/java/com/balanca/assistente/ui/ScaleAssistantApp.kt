@@ -3,7 +3,6 @@ package com.balanca.assistente.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,7 +10,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,16 +21,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.FolderArchive
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Search
@@ -42,8 +39,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -55,7 +50,6 @@ import androidx.compose.ui.window.Dialog
 import com.balanca.assistente.data.Product
 import com.balanca.assistente.data.RecentProduct
 import com.balanca.assistente.ui.theme.*
-import com.balanca.assistente.util.ImageHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,26 +69,7 @@ fun ScaleAssistantApp(
     val statusNotice by viewModel.statusNotice.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
 
-    var isDataBackupDialogOpen by remember { mutableStateOf(false) }
-
-    // Launcher para salvar arquivo CSV exportado
-    val exportCsvLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/csv")
-    ) { uri ->
-        uri?.let {
-            try {
-                context.contentResolver.openOutputStream(it)?.use { stream ->
-                    val csvData = viewModel.getCsvContent()
-                    stream.write(csvData.toByteArray(Charsets.UTF_8))
-                    Toast.makeText(context, "Arquivo CSV exportado com sucesso!", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Erro ao exportar CSV: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    // Launcher para importar arquivo CSV com suporte amplo a gerenciadores de arquivos
+    // Launcher para importar arquivo CSV
     val importCsvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -105,36 +80,6 @@ fun ScaleAssistantApp(
                 }
             } catch (e: Exception) {
                 Toast.makeText(context, "Falha ao abrir CSV: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    // Launcher para salvar backup completo ZIP (com fotos)
-    val exportZipLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri ->
-        uri?.let {
-            try {
-                context.contentResolver.openOutputStream(it)?.use { stream ->
-                    viewModel.exportZip(context, stream)
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Erro ao exportar ZIP: ${e.message}", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
-
-    // Launcher para restaurar backup completo ZIP (com fotos)
-    val importZipLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        uri?.let {
-            try {
-                context.contentResolver.openInputStream(it)?.use { stream ->
-                    viewModel.importZip(context, stream)
-                }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Falha ao abrir ZIP: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -160,39 +105,37 @@ fun ScaleAssistantApp(
                             )
                         )
                         Text(
-                            text = "${products.size} produto(s) cadastrado(s) • 100% Offline",
+                            text = "${products.size} produto(s) disponível(is)",
                             style = MaterialTheme.typography.bodySmall.copy(color = TextMuted)
                         )
                     }
                 },
                 actions = {
-                    // Botão Importar CSV na barra superior
+                    // Exportar CSV
                     IconButton(
-                        onClick = { importCsvLauncher.launch("text/*") }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.FileUpload,
-                            contentDescription = "Importar CSV",
-                            tint = CodeHighlight
-                        )
-                    }
-                    // Botão Exportar CSV na barra superior
-                    IconButton(
-                        onClick = { exportCsvLauncher.launch("produtos_balanca.csv") }
+                        onClick = {
+                            val csvData = viewModel.getCsvContent()
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Backup CSV Balança", csvData))
+                            Toast.makeText(context, "CSV copiado para a área de transferência!", Toast.LENGTH_LONG).show()
+                        }
                     ) {
                         Icon(
                             imageVector = Icons.Default.FileDownload,
                             contentDescription = "Exportar CSV",
-                            tint = AccentGreen
+                            tint = TextLight
                         )
                     }
-                    // Botão Backup Completo com Fotos
+
+                    // Importar CSV
                     IconButton(
-                        onClick = { isDataBackupDialogOpen = true }
+                        onClick = {
+                            importCsvLauncher.launch("text/*")
+                        }
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FolderArchive,
-                            contentDescription = "Backup e Fotos",
+                            imageVector = Icons.Default.FileUpload,
+                            contentDescription = "Importar CSV",
                             tint = TextLight
                         )
                     }
@@ -203,26 +146,28 @@ fun ScaleAssistantApp(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
+            LargeFloatingActionButton(
                 onClick = { viewModel.openAddDialog() },
                 containerColor = PrimaryYellow,
                 contentColor = BackgroundDark,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.height(48.dp),
-                icon = {
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Adicionar Produto",
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(28.dp)
                     )
-                },
-                text = {
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Novo Produto",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }
-            )
+            }
         },
         containerColor = BackgroundDark
     ) { innerPadding ->
@@ -232,90 +177,8 @@ fun ScaleAssistantApp(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
         ) {
-            // Barra de Ações Rápidas: Importar CSV, Exportar CSV e Backup Fotos
-            Spacer(modifier = Modifier.height(6.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedButton(
-                    onClick = { importCsvLauncher.launch("text/*") },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = CodeHighlight),
-                    border = BorderStroke(1.dp, SurfaceVariantDark),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FileUpload,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = CodeHighlight
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Importar CSV",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = { exportCsvLauncher.launch("produtos_balanca.csv") },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentGreen),
-                    border = BorderStroke(1.dp, SurfaceVariantDark),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FileDownload,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = AccentGreen
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Exportar CSV",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = { isDataBackupDialogOpen = true },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextLight),
-                    border = BorderStroke(1.dp, SurfaceVariantDark),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FolderArchive,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = PrimaryYellow
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Backup Fotos",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1
-                    )
-                }
-            }
-
             // Barra de Busca Grande
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.setSearchQuery(it) },
@@ -324,7 +187,7 @@ fun ScaleAssistantApp(
                     .height(64.dp),
                 placeholder = {
                     Text(
-                        text = "Pesquisar produto ou código...",
+                        text = "Digite o nome ou código...",
                         style = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, color = TextMuted)
                     )
                 },
@@ -353,6 +216,7 @@ fun ScaleAssistantApp(
                                     viewModel.stopVoiceRecognition()
                                 } else {
                                     onRequestMicrophonePermission()
+                                    viewModel.startVoiceRecognition(context)
                                 }
                             },
                             modifier = Modifier
@@ -383,7 +247,7 @@ fun ScaleAssistantApp(
                 )
             )
 
-            // Aviso de status ou mensagem amigável de voz
+            // Aviso de status ou voz offline
             AnimatedVisibility(
                 visible = statusNotice != null,
                 enter = fadeIn(),
@@ -400,8 +264,8 @@ fun ScaleAssistantApp(
                     ) {
                         Row(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
+                                .padding(12.dp)
+                                .fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -410,34 +274,26 @@ fun ScaleAssistantApp(
                                 style = MaterialTheme.typography.bodySmall.copy(color = TextLight),
                                 modifier = Modifier.weight(1f)
                             )
-                            IconButton(
-                                onClick = { viewModel.clearStatusNotice() },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Fechar aviso",
-                                    tint = TextMuted,
-                                    modifier = Modifier.size(16.dp)
-                                )
+                            TextButton(onClick = { viewModel.clearStatusNotice() }) {
+                                Text("OK", color = PrimaryYellow, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
             }
 
-            // Consultados Recentemente
+            // Seção de Produtos Recentes
             if (recentProducts.isNotEmpty() && searchQuery.isBlank()) {
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    modifier = Modifier.padding(bottom = 6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.History,
-                        contentDescription = null,
+                        contentDescription = "Recentes",
                         tint = CodeHighlight,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -454,74 +310,46 @@ fun ScaleAssistantApp(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 4.dp)
                 ) {
-                    items(recentProducts) { recent ->
+                    items(recentProducts, key = { it.code }) { recent ->
                         RecentProductChip(
                             recent = recent,
-                            onClick = { viewModel.setSearchQuery(recent.code) }
+                            onClick = {
+                                viewModel.setSearchQuery(recent.code)
+                            }
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Lista de Produtos
+            // Lista de Resultados
             if (products.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                        .fillMaxSize()
+                        .padding(bottom = 96.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = TextMuted,
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = if (searchQuery.isBlank()) "Nenhum produto cadastrado" else "Nenhum produto encontrado para \"$searchQuery\"",
-                            style = MaterialTheme.typography.titleMedium.copy(color = TextLight, fontWeight = FontWeight.Bold),
-                            textAlign = TextAlign.Center
+                            text = "Nenhum produto encontrado",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                color = TextMuted,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = if (searchQuery.isBlank()) "Cadastre seu primeiro produto ou importe uma planilha CSV." else "Verifique o termo digitado ou cadastre um novo produto com este código.",
-                            style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted),
-                            textAlign = TextAlign.Center
+                            text = if (searchQuery.isNotEmpty()) "Tente outro nome ou código" else "Clique em \"Novo Produto\" para começar",
+                            style = MaterialTheme.typography.bodySmall.copy(color = TextMuted.copy(alpha = 0.7f))
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = { viewModel.openAddDialog() },
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryYellow)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, tint = BackgroundDark)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Cadastrar Produto", color = BackgroundDark, fontWeight = FontWeight.Bold)
-                            }
-                            OutlinedButton(
-                                onClick = { importCsvLauncher.launch("text/*") }
-                            ) {
-                                Icon(Icons.Default.FileUpload, contentDescription = null, tint = CodeHighlight)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Importar CSV", color = CodeHighlight)
-                            }
-                        }
                     }
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 80.dp)
+                    contentPadding = PaddingValues(bottom = 96.dp)
                 ) {
                     items(products, key = { it.id }) { product ->
                         ProductCard(
@@ -555,18 +383,6 @@ fun ScaleAssistantApp(
             onSave = { name, code, imageUri, price, unit, isAvailable ->
                 viewModel.saveProduct(name, code, imageUri, price, unit, isAvailable)
             }
-        )
-    }
-
-    // Modal de Importar / Exportar Dados
-    if (isDataBackupDialogOpen) {
-        DataBackupDialog(
-            productsCount = products.size,
-            onDismiss = { isDataBackupDialogOpen = false },
-            onExportCsv = { exportCsvLauncher.launch("produtos_balanca.csv") },
-            onImportCsv = { importCsvLauncher.launch("text/*") },
-            onExportZip = { exportZipLauncher.launch("backup_balanca.zip") },
-            onImportZip = { importZipLauncher.launch("application/zip") }
         )
     }
 
@@ -646,7 +462,7 @@ fun RecentProductChip(
 }
 
 /**
- * Card do produto na lista com renderização persistente de imagem do armazenamento interno
+ * Card do produto na lista com CÓDIGO EM NÚMEROS MUITO GRANDES
  */
 @Composable
 fun ProductCard(
@@ -665,338 +481,150 @@ fun ProductCard(
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, SurfaceVariantDark)
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val isCompact = maxWidth < 540.dp
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Imagem de Referência Visual ANTES da palavra / nome
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = BackgroundDark,
+                border = BorderStroke(1.dp, SurfaceVariantDark),
+                modifier = Modifier
+                    .size(50.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = "Foto do produto",
+                        tint = PrimaryYellow,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
 
-            if (isCompact) {
-                // SMARTPHONE NA ORIENTAÇÃO VERTICAL (PORTRAIT: 320dp - 430dp)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    // 2. FOTO QUADRADA PROPORCIONAL: 64dp carregada com persistência interna
-                    val bitmap = remember(product.imageUri) {
-                        ImageHelper.loadThumbnail(product.imageUri, 160)
-                    }
+            Spacer(modifier = Modifier.width(12.dp))
 
+            // Nome do Produto, Status e Preço
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = product.name,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextLight
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // Badge de Disponibilidade
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = BackgroundDark,
-                        border = BorderStroke(1.dp, SurfaceVariantDark),
-                        modifier = Modifier.size(64.dp)
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (product.isAvailable) AccentGreen.copy(alpha = 0.2f) else DangerRed.copy(alpha = 0.2f),
+                        border = BorderStroke(1.dp, if (product.isAvailable) AccentGreen.copy(alpha = 0.5f) else DangerRed.copy(alpha = 0.5f))
                     ) {
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = product.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Image,
-                                    contentDescription = "Foto do produto",
-                                    tint = PrimaryYellow,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    // COLUNA CENTRAL: HIERARQUIA VISUAL
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        // 1. CÓDIGO DO PRODUTO: MAIOR DESTAQUE VISUAL
                         Text(
-                            text = product.code,
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Black,
-                                fontFamily = FontFamily.Monospace,
-                                color = PrimaryYellow,
-                                letterSpacing = 1.sp
-                            )
-                        )
-
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        // 3. NOME COMPLETO: LEGÍVEL E COM QUEBRA AUTOMÁTICA DE LINHA
-                        Text(
-                            text = product.name,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 16.sp,
+                            text = if (product.isAvailable) "Disponível" else "Esgotado",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = TextLight,
-                                lineHeight = 20.sp
+                                color = if (product.isAvailable) AccentGreen else DangerRed
                             ),
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
+                    }
+                }
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                // Preço
+                if (!product.price.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "R$ ${product.price}/${product.unit}",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace,
+                            color = AccentGreen
+                        )
+                    )
+                } else {
+                    Text(
+                        text = "Toque para tela cheia",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = TextMuted.copy(alpha = 0.6f)
+                        )
+                    )
+                }
+            }
 
-                        // 4. STATUS DISPONÍVEL OU ESGOTADO: SEMPRE VISÍVEL
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = if (product.isAvailable) AccentGreen.copy(alpha = 0.2f) else DangerRed.copy(alpha = 0.2f),
-                            border = BorderStroke(1.dp, if (product.isAvailable) AccentGreen.copy(alpha = 0.5f) else DangerRed.copy(alpha = 0.5f))
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(if (product.isAvailable) AccentGreen else DangerRed)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (product.isAvailable) "Disponível" else "Esgotado",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (product.isAvailable) AccentGreen else DangerRed
-                                    )
-                                )
-                            }
-                        }
+            // Código em NÚMEROS MUITO GRANDES (Exibição destacada)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = BackgroundDark,
+                    border = BorderStroke(2.dp, PrimaryYellow.copy(alpha = 0.8f)),
+                    modifier = Modifier.padding(horizontal = 6.dp)
+                ) {
+                    Text(
+                        text = product.code,
+                        style = MaterialTheme.typography.headlineLarge.copy(
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = PrimaryYellow,
+                            letterSpacing = 1.sp
+                        ),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
 
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        // 5. PREÇO E UNIDADE JUNTOS NA MESMA LINHA: R$ 8,99 / kg
-                        if (!product.price.isNullOrEmpty()) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = BackgroundDark.copy(alpha = 0.8f),
-                                border = BorderStroke(1.dp, SurfaceVariantDark)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.Bottom,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = "R$ ",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = AccentGreen
-                                        )
-                                    )
-                                    Text(
-                                        text = product.price,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = AccentGreen
-                                        )
-                                    )
-                                    Text(
-                                        text = "/${product.unit}",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp,
-                                            color = TextMuted
-                                        )
-                                    )
-                                }
-                            }
-                        }
+                // Ações Rápidas (Copiar, Editar, Excluir)
+                Column {
+                    IconButton(
+                        onClick = onCopyClick,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copiar Código",
+                            tint = CodeHighlight,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
 
-                    // AÇÕES LATERAIS NO CELULAR
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(start = 4.dp)
-                    ) {
-                        IconButton(
-                            onClick = onCopyClick,
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ContentCopy,
-                                contentDescription = "Copiar Código",
-                                tint = CodeHighlight,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
+                    Row {
                         IconButton(
                             onClick = onEditClick,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(30.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Edit,
                                 contentDescription = "Editar",
                                 tint = TextMuted,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
-
                         IconButton(
                             onClick = onDeleteClick,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(30.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = "Excluir",
-                                tint = DangerRed.copy(alpha = 0.85f),
-                                modifier = Modifier.size(18.dp)
+                                tint = DangerRed.copy(alpha = 0.8f),
+                                modifier = Modifier.size(17.dp)
                             )
-                        }
-                    }
-                }
-            } else {
-                // TABLET E SMARTPHONE HORIZONTAL (>= 540dp)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    val tabletBitmap = remember(product.imageUri) {
-                        ImageHelper.loadThumbnail(product.imageUri, 140)
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = BackgroundDark,
-                        border = BorderStroke(1.dp, SurfaceVariantDark),
-                        modifier = Modifier.size(50.dp)
-                    ) {
-                        if (tabletBitmap != null) {
-                            Image(
-                                bitmap = tabletBitmap.asImageBitmap(),
-                                contentDescription = product.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Image,
-                                    contentDescription = "Foto do produto",
-                                    tint = PrimaryYellow,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    // Nome do Produto, Status e Preço
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = product.name,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextLight
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (product.isAvailable) AccentGreen.copy(alpha = 0.2f) else DangerRed.copy(alpha = 0.2f),
-                                border = BorderStroke(1.dp, if (product.isAvailable) AccentGreen.copy(alpha = 0.5f) else DangerRed.copy(alpha = 0.5f))
-                            ) {
-                                Text(
-                                    text = if (product.isAvailable) "Disponível" else "Esgotado",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (product.isAvailable) AccentGreen else DangerRed
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-
-                        if (!product.price.isNullOrEmpty()) {
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "R$ ${product.price}/${product.unit}",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = AccentGreen
-                                )
-                            )
-                        }
-                    }
-
-                    // Código em NÚMEROS GRANDES
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = BackgroundDark,
-                            border = BorderStroke(2.dp, PrimaryYellow.copy(alpha = 0.8f)),
-                            modifier = Modifier.padding(horizontal = 6.dp)
-                        ) {
-                            Text(
-                                text = product.code,
-                                style = MaterialTheme.typography.headlineLarge.copy(
-                                    fontSize = 32.sp,
-                                    fontWeight = FontWeight.Black,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = PrimaryYellow,
-                                    letterSpacing = 1.sp
-                                ),
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                            )
-                        }
-
-                        Column {
-                            IconButton(
-                                onClick = onCopyClick,
-                                modifier = Modifier.size(34.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copiar Código",
-                                    tint = CodeHighlight,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            Row {
-                                IconButton(
-                                    onClick = onEditClick,
-                                    modifier = Modifier.size(30.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = "Editar",
-                                        tint = TextMuted,
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                }
-                                IconButton(
-                                    onClick = onDeleteClick,
-                                    modifier = Modifier.size(30.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Excluir",
-                                        tint = DangerRed.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -1027,26 +655,6 @@ fun SpotlightDialog(
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Foto no destaque se disponível
-                val photo = remember(product.imageUri) {
-                    ImageHelper.loadThumbnail(product.imageUri, 240)
-                }
-                if (photo != null) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, SurfaceVariantDark),
-                        modifier = Modifier.size(80.dp)
-                    ) {
-                        Image(
-                            bitmap = photo.asImageBitmap(),
-                            contentDescription = product.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-
                 Text(
                     text = "CÓDIGO DE BALANÇA",
                     style = MaterialTheme.typography.labelLarge.copy(
@@ -1055,7 +663,7 @@ fun SpotlightDialog(
                         letterSpacing = 2.sp
                     )
                 )
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = product.name,
                     style = MaterialTheme.typography.headlineSmall.copy(
@@ -1064,7 +672,7 @@ fun SpotlightDialog(
                         textAlign = TextAlign.Center
                     )
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 // NÚMERO COLOSSAL
                 Surface(
@@ -1089,7 +697,7 @@ fun SpotlightDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1136,7 +744,7 @@ fun SpotlightDialog(
 }
 
 /**
- * Diálogo de Formulário para Adicionar ou Editar Produto com persistência interna de imagem
+ * Diálogo de Formulário para Adicionar ou Editar Produto
  */
 @Composable
 fun ProductFormDialog(
@@ -1145,7 +753,6 @@ fun ProductFormDialog(
     onDismiss: () -> Unit,
     onSave: (name: String, code: String, imageUri: String?, price: String?, unit: String, isAvailable: Boolean) -> Unit
 ) {
-    val context = LocalContext.current
     var name by remember { mutableStateOf(productToEdit?.name ?: "") }
     var code by remember { mutableStateOf(productToEdit?.code ?: "") }
     var price by remember { mutableStateOf(productToEdit?.price ?: "") }
@@ -1153,19 +760,10 @@ fun ProductFormDialog(
     var isAvailable by remember { mutableStateOf(productToEdit?.isAvailable ?: true) }
     var imageUri by remember { mutableStateOf(productToEdit?.imageUri) }
 
-    // Salva a foto imediatamente no armazenamento interno permanente ao selecionar da galeria
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
-        uri?.let {
-            val savedPath = ImageHelper.saveImageFromUri(context, it, code.ifBlank { "novo" })
-            if (savedPath != null) {
-                imageUri = savedPath
-                Toast.makeText(context, "Foto salva com sucesso!", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, "Erro ao processar imagem da galeria", Toast.LENGTH_SHORT).show()
-            }
-        }
+        uri?.let { imageUri = it.toString() }
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -1220,74 +818,22 @@ fun ProductFormDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Área da Imagem: Prévia persistente ou botão para adicionar
-                val previewBitmap = remember(imageUri) {
-                    ImageHelper.loadThumbnail(imageUri, 180)
-                }
-
-                if (previewBitmap != null) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(BackgroundDark, shape = RoundedCornerShape(12.dp))
-                            .border(1.dp, SurfaceVariantDark, shape = RoundedCornerShape(12.dp))
-                            .padding(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.size(56.dp)
-                        ) {
-                            Image(
-                                bitmap = previewBitmap.asImageBitmap(),
-                                contentDescription = "Prévia da foto",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Foto vinculada ao produto",
-                                fontSize = 12.sp,
-                                color = AccentGreen,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Text(
-                                    text = "Trocar",
-                                    fontSize = 12.sp,
-                                    color = PrimaryYellow,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clickable { photoPickerLauncher.launch("image/*") }
-                                )
-                                Text(
-                                    text = "Remover",
-                                    fontSize = 12.sp,
-                                    color = DangerRed,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clickable { imageUri = "" }
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    OutlinedButton(
-                        onClick = { photoPickerLauncher.launch("image/*") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "Selecionar Foto",
-                            tint = PrimaryYellow
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Adicionar Foto da Galeria",
-                            color = TextLight
-                        )
-                    }
+                // Botão de Imagem da Galeria
+                OutlinedButton(
+                    onClick = { photoPickerLauncher.launch("image/*") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = "Selecionar Foto",
+                        tint = PrimaryYellow
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (imageUri != null) "Trocar Foto da Galeria" else "Adicionar Foto da Galeria",
+                        color = TextLight
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -1341,45 +887,6 @@ fun ProductFormDialog(
                     )
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Unidade de Venda da Balança (UN, PCT, KG, 100G, G, BDJ)
-                Text(
-                    text = "Unidade de Venda da Balança",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        color = TextLight,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                val availableUnits = listOf("UN", "PCT", "KG", "100G", "G", "BDJ")
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    availableUnits.forEach { u ->
-                        val isSelected = unit.equals(u, ignoreCase = true)
-                        Surface(
-                            onClick = { unit = u.lowercase() },
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) PrimaryYellow else SurfaceVariantDark,
-                            border = BorderStroke(1.dp, if (isSelected) PrimaryYellow else SurfaceVariantDark),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = u,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) BackgroundDark else TextLight,
-                                    textAlign = TextAlign.Center
-                                ),
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
-                    }
-                }
-
                 // Mensagem de Erro / Duplicidade
                 errorMessage?.let { error ->
                     Spacer(modifier = Modifier.height(10.dp))
@@ -1409,173 +916,6 @@ fun ProductFormDialog(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Diálogo dedicado de Importação e Exportação de Dados e Backup
- */
-@Composable
-fun DataBackupDialog(
-    productsCount: Int,
-    onDismiss: () -> Unit,
-    onExportCsv: () -> Unit,
-    onImportCsv: () -> Unit,
-    onExportZip: () -> Unit,
-    onImportZip: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = SurfaceDark,
-            border = BorderStroke(1.dp, SurfaceVariantDark),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Importar / Exportar Dados",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryYellow
-                        )
-                    )
-                    IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Clear, contentDescription = "Fechar", tint = TextMuted)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Seção CSV
-                Text(
-                    text = "ARQUIVO CSV (TABELA EXCEL)",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = TextMuted,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Botão Exportar CSV
-                Button(
-                    onClick = {
-                        onExportCsv()
-                        onDismiss()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariantDark),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.FileDownload, contentDescription = null, tint = AccentGreen)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Exportar CSV ($productsCount produtos)",
-                        color = TextLight,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Botão Importar CSV
-                Button(
-                    onClick = {
-                        onImportCsv()
-                        onDismiss()
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariantDark),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.FileUpload, contentDescription = null, tint = CodeHighlight)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Importar Planilha CSV",
-                        color = TextLight,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Text(
-                    text = "* Na importação CSV, os produtos existentes são preservados e as fotos já cadastradas são mantidas.",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = TextMuted),
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Seção Backup Completo com Fotos
-                Text(
-                    text = "BACKUP COMPLETO COM FOTOS (.ZIP)",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = TextMuted,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            onExportZip()
-                            onDismiss()
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, PrimaryYellow.copy(alpha = 0.6f))
-                    ) {
-                        Text("Exportar ZIP", color = PrimaryYellow, fontWeight = FontWeight.Bold)
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            onImportZip()
-                            onDismiss()
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(46.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, SurfaceVariantDark)
-                    ) {
-                        Text("Restaurar ZIP", color = TextLight, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SurfaceVariantDark),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Fechar", color = TextMuted)
                 }
             }
         }
