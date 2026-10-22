@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permissão para reconhecimento de voz da pesquisa -->
+    <!-- Permissão para gravação de áudio na pesquisa por voz -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Permissão de internet para reconhecimento de voz online caso o pacote offline não esteja instalado -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
         <!-- Permite ao app consultar se o serviço de reconhecimento de voz está instalado no Android -->

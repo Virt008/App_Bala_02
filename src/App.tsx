@@ -48,6 +48,17 @@ export default function App() {
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [isAndroidModalOpen, setIsAndroidModalOpen] = useState(false);
   const [isDataBackupModalOpen, setIsDataBackupModalOpen] = useState(false);
+  const [backupModalInitialTab, setBackupModalInitialTab] = useState<'exportCsv' | 'importCsv' | 'fullBackup'>('importCsv');
+
+  const handleOpenImportCsv = () => {
+    setBackupModalInitialTab('importCsv');
+    setIsDataBackupModalOpen(true);
+  };
+
+  const handleOpenFullBackup = () => {
+    setBackupModalInitialTab('fullBackup');
+    setIsDataBackupModalOpen(true);
+  };
 
   // Notificação / Aviso amigável (ex: voz offline ou sucesso)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -290,8 +301,8 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Botão Ver Código & Gerar APK Android */}
+          <div className="flex items-center gap-2">
+            {/* Botão Ver Código & Gerar APK Android no computador/tablet */}
             <button
               onClick={() => setIsAndroidModalOpen(true)}
               className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-bold transition-all shadow-sm"
@@ -301,35 +312,7 @@ export default function App() {
               <span>Gerar APK Android</span>
             </button>
 
-            {/* Área Simples: Importar/Exportar Dados (CSV e Fotos) */}
-            <button
-              onClick={() => setIsDataBackupModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 hover:text-white border border-slate-700 text-xs font-bold transition-all shadow-sm"
-              title="Área de Importar/Exportar dados e backup de fotos"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-sky-400 shrink-0" />
-              <span className="hidden md:inline">Importar/Exportar dados</span>
-              <span className="md:hidden">Backup</span>
-            </button>
-
-            {/* Atalho Exportar CSV Rápido */}
-            <button
-              onClick={handleExportCsv}
-              className="p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
-              title="Baixar arquivo CSV direto"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-
-            {/* Atalho Importar CSV (Abre área de prévia segura) */}
-            <button
-              onClick={() => setIsDataBackupModalOpen(true)}
-              className="p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
-              title="Importar produtos de arquivo CSV"
-            >
-              <Upload className="w-4 h-4" />
-            </button>
-
+            {/* Input oculto para carregar foto da galeria a partir do card */}
             <input
               type="file"
               ref={cardImageInputRef}
@@ -338,13 +321,13 @@ export default function App() {
               className="hidden"
             />
 
-            {/* Botão Adicionar Produto */}
+            {/* Botão Novo Produto — PRESERVADO COM TAMANHO E ESTILO ORIGINAIS */}
             <button
               onClick={() => {
                 setProductToEdit(null);
                 setIsFormOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm transition-all shadow-md active:scale-95 ml-1"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-sm transition-all shadow-md active:scale-95"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
               <span className="hidden xs:inline">Novo Produto</span>
@@ -356,19 +339,46 @@ export default function App() {
 
       {/* Conteúdo Principal */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-4 sm:py-6 flex flex-col pb-24">
-        {/* Banner para celulares sobre o APK nativo */}
-        <div className="sm:hidden mb-3">
+        {/* BARRA DE AÇÕES CSV E BACKUP — VISÍVEL E PROEMINENTE EM CELULAR E COMPUTADOR */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-4">
+          {/* Botão Restaurado: Importar CSV */}
+          <button
+            onClick={handleOpenImportCsv}
+            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-sky-400 hover:text-sky-300 border border-slate-800 hover:border-sky-500/50 text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95"
+            title="Importar produtos a partir de arquivo CSV"
+          >
+            <Upload className="w-4 h-4 text-sky-400 shrink-0" />
+            <span>Importar CSV</span>
+          </button>
+
+          {/* Botão Restaurado: Exportar CSV */}
+          <button
+            onClick={handleExportCsv}
+            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-emerald-400 hover:text-emerald-300 border border-slate-800 hover:border-emerald-500/50 text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95"
+            title="Baixar lista de produtos em arquivo CSV compatível com Excel"
+          >
+            <Download className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Exportar CSV</span>
+          </button>
+
+          {/* Botão Backup & Fotos */}
+          <button
+            onClick={handleOpenFullBackup}
+            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-amber-300 hover:text-amber-200 border border-slate-800 hover:border-amber-500/50 text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95"
+            title="Backup completo com imagens e produtos (ZIP)"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Backup & Fotos</span>
+          </button>
+
+          {/* Atalho Gerar APK no Celular */}
           <button
             onClick={() => setIsAndroidModalOpen(true)}
-            className="w-full py-2 px-3 rounded-xl bg-slate-900 border border-slate-800 text-amber-300 flex items-center justify-between text-xs font-semibold"
+            className="sm:hidden flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95"
+            title="Ver projeto nativo Kotlin e gerar APK"
           >
-            <span className="flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-emerald-400" />
-              <span>Ver projeto nativo Kotlin e gerar APK</span>
-            </span>
-            <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded-full text-amber-300">
-              Ver
-            </span>
+            <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Gerar APK</span>
           </button>
         </div>
 
@@ -669,6 +679,7 @@ export default function App() {
       <DataBackupModal
         isOpen={isDataBackupModalOpen}
         products={products}
+        initialTab={backupModalInitialTab}
         onClose={() => setIsDataBackupModalOpen(false)}
         onImportProducts={handleImportProductsFromCsv}
         onRestoreFullBackup={handleRestoreFullBackup}

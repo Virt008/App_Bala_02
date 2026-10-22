@@ -14,6 +14,7 @@ import com.balanca.assistente.data.AppDatabase
 import com.balanca.assistente.data.Product
 import com.balanca.assistente.data.RecentProduct
 import com.balanca.assistente.util.CsvHelper
+import com.balanca.assistente.util.ImageHelper
 import com.balanca.assistente.util.TextNormalizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -137,6 +138,7 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
     fun confirmDelete() {
         val product = _productToDelete.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            ImageHelper.deleteImageFile(product.imageUri)
             dao.delete(product)
             dao.deleteRecentByCode(product.code)
             _productToDelete.value = null
@@ -174,12 +176,23 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
             }
 
             if (currentEdit != null) {
-                // Atualização
+                // Atualização: Se imageUri for string vazia "", significa que foi removida
+                val finalImageUri = when {
+                    imageUri == "" -> null
+                    imageUri != null -> imageUri
+                    else -> currentEdit.imageUri
+                }
+
+                // Se a foto anterior mudou ou foi removida, exclui o arquivo antigo para economizar espaço
+                if (currentEdit.imageUri != null && currentEdit.imageUri != finalImageUri) {
+                    ImageHelper.deleteImageFile(currentEdit.imageUri)
+                }
+
                 val updated = currentEdit.copy(
                     name = cleanName,
                     normalizedName = TextNormalizer.normalize(cleanName),
                     code = cleanCode,
-                    imageUri = imageUri ?: currentEdit.imageUri,
+                    imageUri = finalImageUri,
                     price = price ?: currentEdit.price,
                     unit = unit,
                     isAvailable = isAvailable,
@@ -189,17 +202,18 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
                 _statusNotice.value = "Produto \"$cleanName\" atualizado."
             } else {
                 // Novo cadastro
+                val finalImageUri = if (imageUri.isNullOrEmpty()) null else imageUri
                 val newProduct = Product(
                     name = cleanName,
                     normalizedName = TextNormalizer.normalize(cleanName),
                     code = cleanCode,
-                    imageUri = imageUri,
+                    imageUri = finalImageUri,
                     price = price,
                     unit = unit,
                     isAvailable = isAvailable
                 )
                 dao.insert(newProduct)
-                _statusNotice.value = "Produto \"$cleanName\" adicionado."
+                _statusNotice.value = "Produto \"$cleanName\" adicionado com sucesso."
             }
 
             _isAddEditDialogOpen.value = false
@@ -220,11 +234,12 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
         return CsvHelper.exportToCsv(allProducts.value)
     }
 
-    // Importação CSV
+    // Importação CSV com suporte a todos os campos
     fun importFromCsv(inputStream: InputStream) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val list = CsvHelper.parseCsv(inputStream)
+                val parseResult = CsvHelper.parseCsv(inputStream)
+                val list = parseResult.validProducts
                 if (list.isEmpty()) {
                     _statusNotice.value = "Nenhum produto válido encontrado no arquivo CSV."
                     return@launch
@@ -233,7 +248,16 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
                 for (p in list) {
                     val existing = dao.getByCode(p.code)
                     if (existing != null) {
-                        dao.update(existing.copy(name = p.name, normalizedName = p.normalizedName))
+                        dao.update(
+                            existing.copy(
+                                name = p.name,
+                                normalizedName = p.normalizedName,
+                                price = p.price ?: existing.price,
+                                unit = p.unit,
+                                isAvailable = p.isAvailable,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
                     } else {
                         dao.insert(p)
                     }
@@ -246,28 +270,96 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    // Reconhecimento de Voz com Verificação de Capacidade Offline
+    // Exportação Backup ZIP Completo (com fotos)
+    fun exportZip(context: Context, outputStream: java.io.OutputStream) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                CsvHelper.exportZipBackup(allProducts.value, context, outputStream)
+                _statusNotice.value = "Backup completo ZIP exportado com sucesso."
+            } catch (e: Exception) {
+                _statusNotice.value = "Erro ao exportar backup ZIP: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    // Restauração Backup ZIP Completo (com fotos)
+    fun importZip(context: Context, inputStream: InputStream) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val list = CsvHelper.importZipBackup(inputStream, context)
+                if (list.isEmpty()) {
+                    _statusNotice.value = "Nenhum produto válido encontrado no backup ZIP."
+                    return@launch
+                }
+                var count = 0
+                for (p in list) {
+                    val existing = dao.getByCode(p.code)
+                    if (existing != null) {
+                        dao.update(
+                            existing.copy(
+                                name = p.name,
+                                normalizedName = p.normalizedName,
+                                price = p.price ?: existing.price,
+                                unit = p.unit,
+                                isAvailable = p.isAvailable,
+                                imageUri = p.imageUri ?: existing.imageUri,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
+                    } else {
+                        dao.insert(p)
+                    }
+                    count++
+                }
+                _statusNotice.value = "$count produtos e fotos restaurados do backup ZIP."
+            } catch (e: Exception) {
+                _statusNotice.value = "Erro ao restaurar backup ZIP: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    // Reconhecimento de Voz em Português do Brasil com tratamento completo de erros
+    fun toggleVoiceRecognition(context: Context) {
+        if (_isListening.value) {
+            stopVoiceRecognition()
+        } else {
+            startVoiceRecognition(context)
+        }
+    }
+
+    fun onMicrophonePermissionDenied() {
+        _isListening.value = false
+        _statusNotice.value = "Permissão de gravação de áudio negada. Autorize o microfone nas configurações do aparelho."
+    }
+
     fun startVoiceRecognition(context: Context) {
+        if (_isListening.value) {
+            stopVoiceRecognition()
+            return
+        }
+
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-            _statusNotice.value = "Reconhecimento de voz não suportado neste aparelho. Utilize a busca por texto."
+            _statusNotice.value = "Reconhecimento de voz indisponível neste aparelho. Por favor, utilize a busca digitada."
             return
         }
 
         try {
-            speechRecognizer?.destroy()
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+            // Cancela e destrói qualquer sessão anterior para evitar sessões simultâneas (erro 8 / erro 5)
+            try {
+                speechRecognizer?.cancel()
+                speechRecognizer?.destroy()
+            } catch (_: Exception) {}
+            speechRecognizer = null
+
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context.applicationContext)
 
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
                 putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, "pt-BR")
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-
-                // Solicita modo offline se suportado pela versão do Android
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                }
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             }
 
             speechRecognizer?.setRecognitionListener(object : RecognitionListener {
@@ -285,12 +377,36 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
                 override fun onError(error: Int) {
                     _isListening.value = false
                     val errorMsg = when (error) {
-                        SpeechRecognizer.ERROR_NETWORK,
-                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-                            "Reconhecimento offline indisponível. Para usar a voz sem internet, instale o pacote de voz em Português no menu do Android (Configurações > Voz offline)."
-                        SpeechRecognizer.ERROR_NO_MATCH -> "Nenhuma palavra identificada. Tente falar novamente."
-                        SpeechRecognizer.ERROR_AUDIO -> "Erro no microfone."
-                        else -> "Não foi possível reconhecer a voz (Código: $error). Digite no campo de busca."
+                        SpeechRecognizer.ERROR_AUDIO -> // 3
+                            "Erro na captura de áudio. Verifique se o microfone está funcionando."
+                        SpeechRecognizer.ERROR_CLIENT -> // 5
+                            "O serviço de voz do Google não pôde ser iniciado. Verifique se o aplicativo do Google está instalado e com as permissões ativas."
+                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> // 9
+                            "Permissão de gravação de áudio negada. Autorize o acesso ao microfone."
+                        SpeechRecognizer.ERROR_NETWORK -> // 2
+                            "Sem conexão com a internet. Para pesquisa por voz sem internet, instale o pacote de voz em Português no menu do Android (Configurações > Google > Reconhecimento de voz offline)."
+                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> // 1
+                            "Tempo de conexão esgotado. Verifique sua conexão à internet e tente novamente."
+                        SpeechRecognizer.ERROR_NO_MATCH -> // 7
+                            "Nenhuma palavra identificada. Fale mais perto do microfone e tente novamente."
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> // 8
+                            "O serviço de voz está ocupado no momento. Aguarde alguns instantes."
+                        SpeechRecognizer.ERROR_SERVER -> // 4
+                            "Erro no servidor de reconhecimento de voz. Tente novamente mais tarde."
+                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> // 6
+                            "Nenhuma fala foi detectada. Toque no microfone e diga o nome ou código do produto."
+                        10 -> // ERROR_TOO_MANY_REQUESTS
+                            "Muitas tentativas simultâneas. Aguarde um instante."
+                        11 -> // ERROR_SERVER_DISCONNECTED
+                            "Conexão com o servidor de voz interrompida."
+                        12 -> // ERROR_LANGUAGE_NOT_SUPPORTED
+                            "O pacote de voz offline em Português (pt-BR) não está instalado no aparelho. Conecte-se à internet ou instale o pacote de voz nas configurações do Android."
+                        13 -> // ERROR_LANGUAGE_UNAVAILABLE
+                            "Idioma Português (pt-BR) temporariamente indisponível no reconhecimento de voz."
+                        14 -> // ERROR_CANNOT_CHECK_SUPPORT
+                            "Não foi possível verificar o suporte de voz no aparelho."
+                        else ->
+                            "Não foi possível captar a voz. Digite o nome ou código no campo de busca."
                     }
                     _statusNotice.value = errorMsg
                 }
@@ -299,9 +415,11 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
                     _isListening.value = false
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     if (!matches.isNullOrEmpty()) {
-                        val heard = matches[0]
-                        _searchQuery.value = heard
-                        _statusNotice.value = "Buscando por: \"$heard\""
+                        val heard = matches[0].trim()
+                        if (heard.isNotEmpty()) {
+                            _searchQuery.value = heard
+                            _statusNotice.value = "Pesquisando por: \"$heard\""
+                        }
                     }
                 }
 
@@ -312,17 +430,23 @@ class ProductViewModel(application: Application) : AndroidViewModel(application)
             speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
             _isListening.value = false
-            _statusNotice.value = "Não foi possível iniciar o microfone. A busca por texto continua ativa."
+            _statusNotice.value = "Não foi possível iniciar o microfone. A busca digitada continua 100% ativa."
         }
     }
 
     fun stopVoiceRecognition() {
-        speechRecognizer?.stopListening()
+        try {
+            speechRecognizer?.stopListening()
+            speechRecognizer?.cancel()
+        } catch (_: Exception) {}
         _isListening.value = false
     }
 
     override fun onCleared() {
         super.onCleared()
-        speechRecognizer?.destroy()
+        try {
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {}
+        speechRecognizer = null
     }
 }

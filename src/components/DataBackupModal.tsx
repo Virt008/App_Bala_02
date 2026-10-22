@@ -26,6 +26,7 @@ import {
 interface DataBackupModalProps {
   isOpen: boolean;
   products: Product[];
+  initialTab?: TabType;
   onClose: () => void;
   onImportProducts: (
     importedProducts: Array<{
@@ -46,11 +47,18 @@ type DuplicateMode = 'merge' | 'skipDuplicates' | 'replace';
 export const DataBackupModal: React.FC<DataBackupModalProps> = ({
   isOpen,
   products,
+  initialTab = 'importCsv',
   onClose,
   onImportProducts,
   onRestoreFullBackup,
 }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('importCsv');
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
+
+  React.useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   // Estados da Importação de CSV
   const [csvResult, setCsvResult] = useState<CsvParseResult | null>(null);

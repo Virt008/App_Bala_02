@@ -21,6 +21,8 @@ class MainActivity : ComponentActivity() {
     ) { isGranted ->
         if (isGranted) {
             viewModel.startVoiceRecognition(this)
+        } else {
+            viewModel.onMicrophonePermissionDenied()
         }
     }
 
@@ -36,7 +38,7 @@ class MainActivity : ComponentActivity() {
                         if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
                             requestAudioPermissionLauncher.launch(permission)
                         } else {
-                            viewModel.startVoiceRecognition(this)
+                            viewModel.toggleVoiceRecognition(this)
                         }
                     }
                 )

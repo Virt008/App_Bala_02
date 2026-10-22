@@ -70,16 +70,19 @@ export const VoiceSearchButton: React.FC<VoiceSearchButtonProps> = ({
         const error = event.error;
 
         if (error === 'network') {
-          // Verificação explícita de capacidade offline
           onNotice(
-            'Atenção: O reconhecimento de voz requer modelos offline instalados no sistema para funcionar sem internet. A pesquisa por texto continua 100% funcional.'
+            'Reconhecimento de voz sem conexão com a internet. Verifique sua rede ou instale o pacote de voz em Português no sistema.'
           );
+        } else if (error === 'not-allowed' || error === 'service-not-allowed') {
+          onNotice('Permissão de microfone negada. Autorize o acesso ao microfone no navegador/dispositivo para pesquisar por voz.');
         } else if (error === 'no-speech') {
-          onNotice('Nenhuma voz detectada. Tente falar mais perto do microfone.');
-        } else if (error === 'not-allowed') {
-          onNotice('Permissão de microfone negada. Autorize o acesso para pesquisar por voz.');
+          onNotice('Nenhuma voz identificada. Tente falar mais próximo ao microfone.');
+        } else if (error === 'audio-capture') {
+          onNotice('Falha na captura de áudio. Verifique se o microfone está conectado e funcionando.');
+        } else if (error === 'language-not-supported') {
+          onNotice('O idioma português (pt-BR) não é suportado pelo serviço de voz do navegador.');
         } else {
-          onNotice('Não foi possível captar a voz. Digite o nome ou código no campo de busca.');
+          onNotice('Não foi possível reconhecer a voz. Digite o nome ou código no campo de busca.');
         }
       };
 
